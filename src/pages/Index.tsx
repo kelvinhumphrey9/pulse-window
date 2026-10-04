@@ -388,6 +388,10 @@ const Index = () => {
   };
 
   const startWorkout = (mode: WorkoutMode = selectedMode) => {
+    if (mode === "run") {
+      beginGuestWorkout("run");
+      return;
+    }
     setGuestMode(false);
     setIsFirstRun(false);
     setSelectedMode(mode);
