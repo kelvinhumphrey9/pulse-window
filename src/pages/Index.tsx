@@ -109,28 +109,41 @@ const formatPace = (elapsedSeconds: number, miles: number) => {
   return `${minutes}:${seconds}`;
 };
 
-const mapPositions = (points: RoutePoint[]) => {
-  if (!points.length) return [];
-  const longitudes = points.map((point) => point.longitude);
-  const latitudes = points.map((point) => point.latitude);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const longitudeSpan = maxLongitude - minLongitude || 0.0001;
-  const latitudeSpan = maxLatitude - minLatitude || 0.0001;
-  return points.map((point) => ({
-    x: 24 + ((point.longitude - minLongitude) / longitudeSpan) * 272,
-    y: 146 - ((point.latitude - minLatitude) / latitudeSpan) * 112,
-  }));
+const latitudeToTileY = (latitude: number, zoom: number) => {
+  const radians = latitude * Math.PI / 180;
+  return (1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2 * 2 ** zoom;
 };
 
+const longitudeToTileX = (longitude: number, zoom: number) => (longitude + 180) / 360 * 2 ** zoom;
+
+const mapPointPixels = (point: RoutePoint, zoom: number, originX: number, originY: number) => ({
+  x: longitudeToTileX(point.longitude, zoom) * 256 - originX,
+  y: latitudeToTileY(point.latitude, zoom) * 256 - originY,
+});
+
 const RouteMap = ({ points, active }: { points: RoutePoint[]; active?: boolean }) => {
-  const positions = mapPositions(points);
+  const zoom = 16;
+  const center = points[points.length - 1] || points[0];
+  const centerX = center ? longitudeToTileX(center.longitude, zoom) * 256 : 0;
+  const centerY = center ? latitudeToTileY(center.latitude, zoom) * 256 : 0;
+  const originX = centerX - 160;
+  const originY = centerY - 85;
+  const tileCenterX = center ? Math.floor(longitudeToTileX(center.longitude, zoom)) : 0;
+  const tileCenterY = center ? Math.floor(latitudeToTileY(center.latitude, zoom)) : 0;
+  const tileCount = 2 ** zoom;
+  const tiles = points.length > 0 ? Array.from({ length: 9 }, (_, index) => {
+    const offsetX = (index % 3) - 1;
+    const offsetY = Math.floor(index / 3) - 1;
+    const tileX = tileCenterX + offsetX;
+    const tileY = tileCenterY + offsetY;
+    const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
+    return { tileX: wrappedX, tileY, left: tileX * 256 - originX, top: tileY * 256 - originY };
+  }) : [];
+  const positions = points.map((point) => mapPointPixels(point, zoom, originX, originY));
   const path = positions.map((position, index) => `${index === 0 ? "M" : "L"}${position.x} ${position.y}`).join(" ");
-  const start = positions[0];
-  const finish = positions[positions.length - 1];
-  return <div className="route-map-card"><div className="route-map-header"><div><span className="eyebrow">ROUTE MAP</span><strong>{active ? "Live route" : "Your jog route"}</strong></div><span className="route-map-status"><span className={active ? "live-dot" : "finished-dot"} />{active ? "Tracking" : "Finished"}</span></div><div className="route-map-canvas">{positions.length > 0 ? <svg viewBox="0 0 320 170" role="img" aria-label={active ? "Live route with start and current position" : "Jog route with start and finish markers"}><path d="M0 28H320M0 86H320M0 144H320M54 0V170M142 0V170M230 0V170" className="map-grid-line" /><path d={path} className="route-path" />{start && <><circle cx={start.x} cy={start.y} r="7" className="route-marker start-marker" /><text x={start.x + 11} y={start.y - 10} className="route-marker-label">START</text></>}{finish && <><circle cx={finish.x} cy={finish.y} r="7" className={`route-marker ${active ? "current-marker" : "finish-marker"}`} /><text x={finish.x + 11} y={finish.y - 10} className="route-marker-label">{active ? "CURRENT" : "FINISH"}</text></>}</svg> : <div className="route-map-empty"><MapPin size={21} /><span>{active ? "Waiting for your first GPS point" : "No GPS route was recorded"}<small>{active ? "Keep moving and your start point will appear here." : "Turn on location next time to see start and finish."}</small></span></div>}</div><div className="route-map-legend"><span><i className="legend-start" /> Start</span><span><i className={active ? "legend-current" : "legend-finish"} /> {active ? "Current" : "Finish"}</span></div></div>;
+  const startPoint = positions[0];
+  const finishPoint = positions[positions.length - 1];
+  return <div className="route-map-card"><div className="route-map-header"><div><span className="eyebrow">OPENSTREETMAP ROUTE</span><strong>{active ? "Live route" : "Your jog route"}</strong></div><span className="route-map-status"><span className={active ? "live-dot" : "finished-dot"} />{active ? "Tracking" : "Finished"}</span></div><div className="real-route-map-canvas">{points.length > 0 ? <><div className="osm-map-tiles">{tiles.map((tile) => <img key={`${tile.tileX}-${tile.tileY}`} className="osm-map-tile" src={`https://tile.openstreetmap.org/${zoom}/${tile.tileX}/${tile.tileY}.png`} alt="" style={{ left: tile.left, top: tile.top }} />)}</div><svg className="route-map-overlay" viewBox="0 0 320 170" role="img" aria-label={active ? "Live GPS route with start and current position" : "GPS route with start and finish markers"}><path d={path} className="route-path" />{startPoint && <><circle cx={startPoint.x} cy={startPoint.y} r="7" className="route-marker start-marker" /><text x={startPoint.x + 10} y={startPoint.y - 10} className="route-marker-label">START</text></>}{finishPoint && <><circle cx={finishPoint.x} cy={finishPoint.y} r="7" className={`route-marker ${active ? "current-marker" : "finish-marker"}`} /><text x={finishPoint.x + 10} y={finishPoint.y - 10} className="route-marker-label">{active ? "CURRENT" : "FINISH"}</text></>}</svg></> : <div className="route-map-empty"><MapPin size={21} /><span>{active ? "Waiting for your first GPS point" : "No GPS route was recorded"}<small>{active ? "Keep moving and your start point will appear here." : "Turn on location next time to see start and finish."}</small></span></div>}</div><div className="route-map-legend"><span><i className="legend-start" /> Start</span><span><i className={active ? "legend-current" : "legend-finish"} /> {active ? "Current" : "Finish"}</span></div></div>;
 };
 
 const signals = [
@@ -213,6 +226,18 @@ const Index = () => {
     if (geoWatchRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.clearWatch(geoWatchRef.current);
     }
+  }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden || geoWatchRef.current === null || !navigator.geolocation) return;
+      navigator.geolocation.clearWatch(geoWatchRef.current);
+      geoWatchRef.current = null;
+      setIsPaused(true);
+      setAlertStatus("Tracking paused while the app is not visible");
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   const formatTimer = (seconds: number) => {
