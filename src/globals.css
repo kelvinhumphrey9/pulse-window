@@ -395,3 +395,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .train-page .history-row b { display: none; }
   .train-page .history-row { grid-template-columns: 34px minmax(0, 1fr) 16px; }
 }
+
+.add-session-panel { border: 1px solid #dce6be; border-radius: 17px; background: #f7fbe9; padding: 15px; display: grid; gap: 13px; animation: cardEnter .28s ease both; }
+.add-session-panel-copy { display: grid; gap: 4px; }
+.add-session-panel-copy .eyebrow { color: #76952c; }
+.add-session-panel-copy strong { color: #26341a; font-size: 14px; }
+.add-session-panel-copy span { color: #7e8872; font-size: 10px; }
+.add-session-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.add-session-option { min-width: 0; border: 1px solid #dce6be; border-radius: 12px; background: #fff; padding: 11px; display: grid; grid-template-columns: 32px minmax(0, 1fr) 15px; align-items: center; gap: 8px; text-align: left; color: #33431d; cursor: pointer; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.add-session-option:hover { transform: translateY(-2px); border-color: #b8f34a; box-shadow: 0 8px 16px rgba(75, 107, 14, .1); }
+.add-session-option.run { border-color: #f5c9bf; color: #63342b; }
+.add-session-option.run:hover { border-color: #f47f65; }
+.add-session-option-icon { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: #eff8d8; color: #6c9226; }
+.add-session-option.run .add-session-option-icon { background: #fff0ea; color: #d36a52; }
+.add-session-option > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.add-session-option strong { font-size: 11px; }
+.add-session-option small { color: #89919e; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.add-session-option > svg { color: #8a9d42; }
+.add-session-option.run > svg { color: #c8735c; }
+.add-session-cancel { justify-self: start; border: 0; background: transparent; color: #768168; padding: 3px 0; font-size: 10px; font-weight: 800; cursor: pointer; }
+.add-session-cancel:hover { color: #465f18; }
+@media (max-width: 480px) {
+  .add-session-options { grid-template-columns: 1fr; }
+  .add-session-option { min-height: 54px; }
+}
