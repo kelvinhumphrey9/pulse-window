@@ -1,0 +1,66 @@
+.pulse-auth-page {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+  background: #eef3f7;
+  color: #11182a;
+}
+
+.pulse-auth-page::before,
+.pulse-auth-page::after {
+  content: "";
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.pulse-auth-page::before { top: -92px; right: -76px; background: #b8f34a; opacity: .72; }
+.pulse-auth-page::after { bottom: -124px; left: -88px; background: #ff826d; opacity: .52; }
+
+.pulse-auth-shell { width: min(100%, 470px); position: relative; z-index: 1; }
+.pulse-auth-brand { display: flex; align-items: center; gap: 10px; justify-content: center; color: #11182a; font: 800 17px/1 Manrope, sans-serif; letter-spacing: -.02em; margin-bottom: 18px; }
+.pulse-auth-mark { display: flex; align-items: end; gap: 3px; height: 18px; }
+.pulse-auth-mark i { display: block; width: 4px; border-radius: 3px; background: #11182a; }
+.pulse-auth-mark i:nth-child(1) { height: 8px; }
+.pulse-auth-mark i:nth-child(2) { height: 14px; background: #ff6f61; }
+.pulse-auth-mark i:nth-child(3) { height: 18px; background: #b8f34a; }
+.pulse-auth-card { background: rgba(255,255,255,.94); border: 1px solid rgba(17,24,42,.09); border-radius: 26px; box-shadow: 0 26px 70px rgba(35,53,76,.16); padding: 26px 20px 22px; }
+.pulse-auth-back { display: inline-flex; color: #647083; font: 700 12px/1 Manrope, sans-serif; text-decoration: none; transition: color .2s ease; }
+.pulse-auth-back:hover { color: #11182a; }
+.pulse-auth-heading { margin: 24px 0 20px; }
+.pulse-auth-kicker { margin: 0 0 8px; color: #80901f; font: 800 10px/1.2 "DM Mono", monospace; letter-spacing: .15em; }
+.pulse-auth-heading h1 { margin: 0; color: #11182a; font: 800 clamp(28px, 8vw, 38px)/1.02 Manrope, sans-serif; letter-spacing: -.055em; }
+.pulse-auth-heading p:last-child { max-width: 330px; margin: 11px 0 0; color: #697485; font: 500 14px/1.55 Manrope, sans-serif; }
+.pulse-auth-ui { width: 100%; }
+.pulse-auth-ui .supabase-auth-ui_ui-container { gap: 18px; }
+.pulse-auth-ui label { color: #344054 !important; font: 700 12px/1.2 Manrope, sans-serif !important; }
+.pulse-auth-ui input { min-height: 48px !important; border-radius: 12px !important; border-color: #dfe4d9 !important; background: #f4f6ef !important; color: #11182a !important; box-shadow: none !important; }
+.pulse-auth-ui input:focus { border-color: #9ed936 !important; box-shadow: 0 0 0 3px rgba(184,243,74,.24) !important; }
+.pulse-auth-ui button { min-height: 48px !important; border: 0 !important; border-radius: 12px !important; color: #11182a !important; font: 800 13px/1 Manrope, sans-serif !important; box-shadow: 0 8px 18px rgba(129,161,39,.18) !important; transition: transform .2s ease, box-shadow .2s ease !important; }
+.pulse-auth-ui button:hover { transform: translateY(-1px); box-shadow: 0 11px 22px rgba(129,161,39,.25) !important; }
+.pulse-auth-ui a { color: #6d7f16 !important; font-weight: 700 !important; }
+.pulse-auth-footnote { margin: 16px 0 0; color: #7c8795; text-align: center; font: 600 11px/1.4 Manrope, sans-serif; }
+.pulse-auth-status { text-align: center; padding: 42px 24px; }
+.pulse-auth-status-icon { width: 54px; height: 54px; display: grid; place-items: center; margin: 0 auto 22px; border-radius: 18px; background: #b8f34a; color: #11182a; font: 900 25px/1 Manrope, sans-serif; }
+.pulse-auth-status h1 { margin: 0; font: 800 30px/1.05 Manrope, sans-serif; letter-spacing: -.05em; }
+.pulse-auth-status p:not(.pulse-auth-kicker) { margin: 12px auto 24px; color: #697485; font: 500 14px/1.55 Manrope, sans-serif; }
+.pulse-auth-button { display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 0 18px; border: 0; border-radius: 12px; background: #b8f34a; color: #11182a; text-decoration: none; font: 800 13px/1 Manrope, sans-serif; cursor: pointer; }
+.pulse-reset-form { display: grid; gap: 15px; }
+.pulse-reset-form label { display: grid; gap: 7px; color: #344054; font: 700 12px/1.2 Manrope, sans-serif; }
+.pulse-reset-form input, .pulse-reset-form select { min-height: 48px; padding: 0 13px; border: 1px solid #dfe4d9; border-radius: 12px; background: #f4f6ef; color: #11182a; font: 600 14px Manrope, sans-serif; outline: none; }
+.pulse-reset-form input:focus, .pulse-reset-form select:focus { border-color: #9ed936; box-shadow: 0 0 0 3px rgba(184,243,74,.24); }
+.pulse-auth-error, .pulse-auth-success { margin: 0; border-radius: 10px; padding: 11px 12px; font: 600 12px/1.4 Manrope, sans-serif; }
+.pulse-auth-error { background: #fff0ed; color: #a23f34; }
+.pulse-auth-success { background: #effbd9; color: #50730f; }
+
+@media (min-width: 520px) {
+  .pulse-auth-page { padding: 44px 20px; }
+  .pulse-auth-card { padding: 32px 34px 28px; }
+}

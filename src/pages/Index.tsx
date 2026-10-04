@@ -19,7 +19,6 @@ import {
   Layers3,
   LocateFixed,
   MapPin,
-  Menu,
   MoreHorizontal,
   Pause,
   Play,
@@ -39,6 +38,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/components/AuthProvider";
+import UserMenu from "@/components/UserMenu";
+import { Link } from "react-router-dom";
 
 const navItems = [
   { id: "home", label: "Today", icon: Activity },
@@ -180,6 +182,7 @@ const docSections = {
 };
 
 const Index = () => {
+  const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<NavId>("home");
   const [alertStatus, setAlertStatus] = useState("Ready when you are");
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("lift");
@@ -188,7 +191,6 @@ const Index = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [docTab, setDocTab] = useState<keyof typeof docSections>("prd");
   const [showReasoning, setShowReasoning] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
   const geoWatchRef = useRef<number | null>(null);
   const lastPositionRef = useRef<GeolocationPosition | null>(null);
   const [runDistanceMeters, setRunDistanceMeters] = useState(0);
@@ -211,6 +213,12 @@ const Index = () => {
   const [manualPace, setManualPace] = useState("10:00");
   const [routineSaved, setRoutineSaved] = useState(false);
   const [smartTimingSetup, setSmartTimingSetup] = useState(false);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    setIsFirstRun(false);
+    setGuestMode(false);
+  }, [session]);
 
   useEffect(() => {
     if (!workoutStarted || isPaused) return;
@@ -400,8 +408,7 @@ const Index = () => {
       </div>
       <div className="header-actions">
         <button className="icon-button notification-button" aria-label="Notifications" onClick={() => setAlertStatus("You're all caught up")}><Bell size={18} strokeWidth={1.8} /><span className="notification-dot" /></button>
-        <button className="profile-button" aria-label="Open profile" onClick={() => setShowMenu((value) => !value)}><span>AL</span></button>
-        {showMenu && <div className="profile-menu"><p className="menu-kicker">ATHLETE PROFILE</p><strong>Alex Laurent</strong><span>Hybrid athlete · 3 day streak</span><button onClick={() => setShowMenu(false)}>Close menu <X size={14} /></button></div>}
+        <UserMenu />
       </div>
     </header>
   );
@@ -415,7 +422,7 @@ const Index = () => {
     return <div className="guest-focus-page"><div className="guest-step-indicator"><span>AFTER YOUR WORKOUT</span><span>{isCalendar ? "1 of 2" : "2 of 2"}</span></div><div className="permission-hero-icon">{isCalendar ? <CalendarDays size={29} /> : <Bell size={29} />}</div><p className="eyebrow">{isCalendar ? "SMART TIMING · CALENDAR" : "SMART TIMING · NOTIFICATIONS"}</p><h1>{isCalendar ? "Find your next easy window?" : "Want a nudge when the timing is right?"}</h1><p className="guest-lead">{isCalendar ? "Connect your calendar and PulseWindow will look for open workout time. We’ll never add events without asking." : "PulseWindow can let you know when your schedule, weather, and energy line up. You’ll stay in control."}</p><div className="privacy-note"><ShieldCheck size={15} /><span>{isCalendar ? "We only read availability. We never add events without asking." : "You choose when PulseWindow can reach you."}</span></div><div className="guest-action-stack"><Button className="lime-button guest-primary-button" onClick={() => isCalendar ? resolveCalendar("granted") : resolveNotifications("granted")}>{isCalendar ? "Find my windows" : "Turn on smart nudges"}<ArrowRight size={15} /></Button><button className="guest-secondary-button" onClick={() => isCalendar ? resolveCalendar("denied") : resolveNotifications("denied")}>{isCalendar ? "Not now" : "Maybe later"}</button></div></div>;
   };
 
-  const renderGuestWelcome = () => <div className="guest-focus-page welcome-page"><div className="welcome-orbit"><div className="welcome-orbit-core"><Zap size={32} fill="currentColor" /></div><span /><span /><span /></div><p className="eyebrow">A SMALLER WAY TO START</p><h1>Move first.<br /><span>Figure it out later.</span></h1><p className="guest-lead">No setup. No sign-up. Just one quick workout that fits the moment you’re in.</p><Button className="lime-button guest-primary-button" onClick={openQuickWorkout}>Start a quick workout <ArrowRight size={16} /></Button><button className="account-link" onClick={() => exitGuestFlow("Guest mode stays available whenever you need it")}>I already have an account</button><div className="guest-proof"><div><Timer size={16} /><span>Under 3 min<br />to get moving</span></div><div><ShieldCheck size={16} /><span>Your workout<br />stays on this device</span></div></div></div>;
+  const renderGuestWelcome = () => <div className="guest-focus-page welcome-page"><div className="welcome-orbit"><div className="welcome-orbit-core"><Zap size={32} fill="currentColor" /></div><span /><span /><span /></div><p className="eyebrow">A SMALLER WAY TO START</p><h1>Move first.<br /><span>Figure it out later.</span></h1><p className="guest-lead">No setup. No sign-up. Just one quick workout that fits the moment you’re in.</p><Button className="lime-button guest-primary-button" onClick={openQuickWorkout}>Start a quick workout <ArrowRight size={16} /></Button><Link className="account-link" to="/auth/sign-in">I already have an account</Link><div className="guest-proof"><div><Timer size={16} /><span>Under 3 min<br />to get moving</span></div><div><ShieldCheck size={16} /><span>Your workout<br />stays on this device</span></div></div></div>;
 
   const renderGuestRecommendation = () => {
     const alternateMode: WorkoutMode = recommendedMode === "run" ? "lift" : "run";
@@ -438,7 +445,7 @@ const Index = () => {
 
   const renderGuestSmartTiming = () => <div className="guest-focus-page conversion-page"><div className="smart-timing-art"><div><Zap size={23} fill="currentColor" /></div><span /><span /><span /></div><p className="eyebrow">THE NEXT EASY WIN</p><h1>Want help finding the next good moment?</h1><p className="guest-lead">PulseWindow can watch for a clear, open window that fits your training.</p><div className="smart-timing-benefits"><span><CalendarDays size={15} /> Open time</span><span><CloudSun size={15} /> Good weather</span><span><HeartPulse size={15} /> Your energy</span></div><div className="guest-action-stack"><Button className="lime-button guest-primary-button" onClick={startSmartTimingSetup}>Set up smart timing <ArrowRight size={15} /></Button><button className="guest-secondary-button" onClick={() => setGuestStep("account")}>Maybe later</button></div></div>;
 
-  const renderGuestAccount = () => <div className="guest-focus-page conversion-page account-page"><div className="account-art"><ShieldCheck size={29} /></div><p className="eyebrow">OPTIONAL, ALWAYS</p><h1>Keep your progress across devices?</h1><p className="guest-lead">Create an account later to back up workouts and keep your routines with you.</p><div className="account-status-list"><span><Check size={14} /> {routineSaved ? "Routine saved on this device" : "Your workout is safe on this device"}</span><span><Check size={14} /> Smart Timing stays {smartTimingSetup ? "ready" : "available"}</span></div><div className="guest-action-stack"><Button className="lime-button guest-primary-button" onClick={() => exitGuestFlow("Account setup can wait · your workout is saved")}>Create account <ArrowRight size={15} /></Button><button className="guest-secondary-button" onClick={() => exitGuestFlow("Guest mode stays available whenever you need it")}>Keep using guest mode</button></div></div>;
+  const renderGuestAccount = () => <div className="guest-focus-page conversion-page account-page"><div className="account-art"><ShieldCheck size={29} /></div><p className="eyebrow">OPTIONAL, ALWAYS</p><h1>Keep your progress across devices?</h1><p className="guest-lead">Create an account later to back up workouts and keep your routines with you.</p><div className="account-status-list"><span><Check size={14} /> {routineSaved ? "Routine saved on this device" : "Your workout is safe on this device"}</span><span><Check size={14} /> Smart Timing stays {smartTimingSetup ? "ready" : "available"}</span></div><div className="guest-action-stack"><Link className="lime-button guest-primary-button" to="/auth/sign-up">Create account <ArrowRight size={15} /></Link><button className="guest-secondary-button" onClick={() => exitGuestFlow("Guest mode stays available whenever you need it")}>Keep using guest mode</button></div></div>;
 
   const renderGuestFlow = () => {
     let content = guestStep === "welcome" ? renderGuestWelcome() : guestStep === "recommendation" ? renderGuestRecommendation() : guestStep === "active" ? renderGuestActiveWorkout() : guestStep === "summary" ? renderGuestSummary() : guestStep === "save-routine" ? renderGuestSaveRoutine() : guestStep === "smart-timing" ? renderGuestSmartTiming() : guestStep === "calendar" ? renderPermissionCard("calendar") : guestStep === "notifications" ? renderPermissionCard("notifications") : renderGuestAccount();
@@ -462,7 +469,7 @@ const Index = () => {
   if (isFirstRun || guestMode) return renderGuestFlow();
 
   const activeContent = activeTab === "home" ? renderHome() : activeTab === "train" ? renderTrain() : activeTab === "insights" ? renderInsights() : renderBlueprint();
-  return <main className="app-shell"><aside className="desktop-rail"><div className="rail-brand">{renderLogo()}<span>PW</span></div><nav>{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setActiveTab(item.id)}><Icon size={19} /><span>{item.label}</span></button>; })}</nav><div className="rail-bottom"><button><CircleHelp size={18} /> Help center</button><div className="rail-profile"><span>AL</span><div><strong>Alex Laurent</strong><small>Pro athlete</small></div><MoreHorizontal size={16} /></div></div></aside><div className="app-main"><div className="content-wrap">{renderHeader()}<div className="mobile-tab-label"><span>{navItems.find((item) => item.id === activeTab)?.label}</span><button onClick={() => setShowMenu((value) => !value)}><Menu size={19} /></button></div>{activeContent}</div><nav className="mobile-nav">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setActiveTab(item.id)}><Icon size={19} /><span>{item.label}</span></button>; })}</nav></div>{alertStatus !== "Ready when you are" && <button className="toast-status" onClick={() => setAlertStatus("Ready when you are")}><Check size={15} /> {alertStatus}</button>}</main>;
+  return <main className="app-shell"><aside className="desktop-rail"><div className="rail-brand">{renderLogo()}<span>PW</span></div><nav>{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setActiveTab(item.id)}><Icon size={19} /><span>{item.label}</span></button>; })}</nav><div className="rail-bottom"><button><CircleHelp size={18} /> Help center</button><div className="rail-profile"><span>AL</span><div><strong>Alex Laurent</strong><small>Pro athlete</small></div><MoreHorizontal size={16} /></div></div></aside><div className="app-main"><div className="content-wrap">{renderHeader()}<div className="mobile-tab-label"><span>{navItems.find((item) => item.id === activeTab)?.label}</span><UserMenu /></div>{activeContent}</div><nav className="mobile-nav">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setActiveTab(item.id)}><Icon size={19} /><span>{item.label}</span></button>; })}</nav></div>{alertStatus !== "Ready when you are" && <button className="toast-status" onClick={() => setAlertStatus("Ready when you are")}><Check size={15} /> {alertStatus}</button>}</main>;
 };
 
 export default Index;
