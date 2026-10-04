@@ -319,3 +319,49 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }
 }
+
+.insights-page .page-title-row { align-items: flex-start; }
+.insights-page > .page-title-row { animation: insightsReveal .6s ease both; }
+.insights-page > .recovery-card { animation: insightsReveal .65s .1s ease both; }
+.insights-page > .section-block:nth-child(3) { animation: insightsReveal .65s .2s ease both; }
+.insights-page > .section-block:nth-child(4) { animation: insightsReveal .65s .3s ease both; }
+.insights-page .recovery-card h2 { animation: insightMetricPop .7s .45s ease both; }
+.insights-page .readiness-ring { animation: insightRingIn .85s .35s cubic-bezier(.22,.75,.25,1) both; }
+.insights-page .chart-card { animation: cardEnter .6s .36s ease both; }
+.insights-page .insight-item { animation: insightItemIn .5s ease both; }
+.insights-page .insight-item:nth-child(2) { animation-delay: .1s; }
+.insights-page .area-chart path:first-child { stroke-dasharray: 700; stroke-dashoffset: 700; animation: routeDraw 1.3s .6s ease-out forwards; }
+.insights-actions { position: relative; flex: 0 0 auto; }
+.insights-actions .circle-button { position: relative; z-index: 2; }
+.insights-menu { position: absolute; z-index: 12; top: 44px; right: 0; width: 230px; padding: 14px; display: grid; gap: 8px; background: #fff; border: 1px solid #e2e4dc; border-radius: 15px; box-shadow: 0 16px 36px rgba(20, 28, 44, .13); animation: cardEnter .2s ease both; }
+.insights-menu strong { color: #737c8b; font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: .12em; }
+.insights-menu span { color: #7d8694; font-size: 10px; line-height: 1.45; }
+.insights-menu button { border: 0; border-radius: 9px; padding: 10px; background: #eff8d8; color: #587719; text-align: left; font-size: 10px; font-weight: 800; cursor: pointer; transition: background-color .2s ease, transform .2s ease; }
+.insights-menu button:hover { background: #e0f3b9; transform: translateY(-1px); }
+@keyframes insightsReveal { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes insightMetricPop { from { opacity: 0; transform: translateY(8px) scale(.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes insightRingIn { from { opacity: 0; transform: rotate(35deg) scale(.7); } to { opacity: 1; transform: rotate(35deg) scale(1); } }
+@keyframes insightItemIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+
+@media (max-width: 519px) {
+  .insights-page .page-title-row { gap: 12px; }
+  .insights-page .page-title-row > div:first-child { min-width: 0; flex: 1; }
+  .insights-page .page-title-row h1 { font-size: clamp(27px, 9vw, 36px); overflow-wrap: anywhere; }
+  .insights-menu { right: -2px; width: min(230px, calc(100vw - 48px)); }
+  .insights-page .recovery-card { padding: 18px; }
+  .insights-page .recovery-card h2 { font-size: 36px; }
+  .insights-page .readiness-ring { width: 82px; height: 82px; border-width: 7px; }
+  .insights-page .readiness-ring strong { font-size: 17px; }
+  .insights-page .chart-head { align-items: flex-start; gap: 10px; }
+  .insights-page .positive-stat { text-align: right; }
+}
+
+@media (min-width: 700px) {
+  .insights-page .page-title-row { align-items: center; }
+  .insights-page .recovery-card { padding: 28px; }
+  .insights-menu { width: 250px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .insights-page > *, .insights-page .recovery-card h2, .insights-page .readiness-ring, .insights-page .chart-card, .insights-page .insight-item, .insights-page .area-chart path:first-child, .insights-menu { animation: none !important; }
+}
