@@ -68,3 +68,16 @@
   .pulse-auth-page { padding: 44px 20px; }
   .pulse-auth-card { padding: 32px 34px 28px; }
 }
+
+.pulse-auth-brand { animation: authRise .5s ease both; }
+.pulse-auth-card { animation: authCardIn .65s .08s ease both; }
+.pulse-auth-heading { animation: authRise .55s .18s ease both; }
+.pulse-reset-form { animation: authRise .55s .26s ease both; }
+.pulse-auth-switch, .pulse-auth-footnote { animation: authRise .55s .34s ease both; }
+.pulse-auth-button { transition: transform .22s ease, box-shadow .22s ease, opacity .22s ease; box-shadow: 0 8px 18px rgba(129,161,39,.18); }
+.pulse-auth-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(129,161,39,.26); }
+@keyframes authRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes authCardIn { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .pulse-auth-brand, .pulse-auth-card, .pulse-auth-heading, .pulse-reset-form, .pulse-auth-switch, .pulse-auth-footnote { animation: none; }
+}
