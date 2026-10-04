@@ -284,7 +284,7 @@ const Index = () => {
     setSelectedMode(mode);
     setGuestMode(true);
     setGuestStep("active");
-    setGuestDetailsOpen(false);
+    setGuestDetailsOpen(mode === "run");
     setGuestSetSaved(false);
     setElapsed(0);
     setRunDistanceMeters(0);
