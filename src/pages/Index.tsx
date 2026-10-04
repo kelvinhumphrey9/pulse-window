@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -59,10 +59,49 @@ type PermissionState = {
   notifications: PermissionStatus;
 };
 
+type SavedRoutine = {
+  id: string;
+  mode: WorkoutMode;
+  name: string;
+  detail: string;
+  createdAt: string;
+};
+
+const ROUTINES_STORAGE_KEY = "pulsewindow-routines";
+
+const readSavedRoutines = (): SavedRoutine[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(ROUTINES_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 const recommendation = {
   mode: "run" as WorkoutMode,
   reason: "Clear skies and 42 open minutes.",
   detail: "A light jog is the easiest win right now.",
+};
+
+const distanceBetweenPositions = (from: GeolocationPosition, to: GeolocationPosition) => {
+  const earthRadius = 6371000;
+  const latitudeDelta = (to.coords.latitude - from.coords.latitude) * Math.PI / 180;
+  const longitudeDelta = (to.coords.longitude - from.coords.longitude) * Math.PI / 180;
+  const latitudeOne = from.coords.latitude * Math.PI / 180;
+  const latitudeTwo = to.coords.latitude * Math.PI / 180;
+  const value = Math.sin(latitudeDelta / 2) ** 2 + Math.sin(longitudeDelta / 2) ** 2 * Math.cos(latitudeOne) * Math.cos(latitudeTwo);
+  return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+};
+
+const formatPace = (elapsedSeconds: number, miles: number) => {
+  if (elapsedSeconds < 1 || miles < 0.01) return "—";
+  const paceSeconds = Math.round(elapsedSeconds / miles);
+  const minutes = Math.floor(paceSeconds / 60);
+  const seconds = (paceSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
 };
 
 const signals = [
@@ -87,7 +126,7 @@ const docSections = {
   architecture: [
     { eyebrow: "01 · Decision engine", title: "Score every viable workout window.", body: "A scheduling worker expands calendar gaps into candidate windows, enriches them with weather, crowd, and recovery signals, then scores each window against the user's workout intent and preferences. Only the top actionable window is promoted." },
     { eyebrow: "02 · Alert algorithm", title: "The right time, in six passes.", body: "Find availability → filter by session duration → classify workout context → score weather and crowd → adjust for energy and sleep → send one notification with Start, Snooze, and Reschedule actions. Re-score after a user response or meaningful context change." },
-    { eyebrow: "03 · Integrations", title: "A calm layer over noisy inputs.", body: "CalendarKit / Google Calendar for availability, WeatherKit / OpenWeather for conditions, Google Maps or Mapbox for route context, HealthKit / Health Connect for sleep and energy, and a gym capacity provider or privacy-safe user estimates for crowding." },
+    { eyebrow: "03 · Integrations", title: "A calm layer over noisy inputs.", body: "The Jog tracker uses the phone Geolocation API for live distance and pace, with Mapbox or Google Maps for route context. CalendarKit / Google Calendar, WeatherKit / OpenWeather, HealthKit / Health Connect, and a gym capacity provider complete the Smart Timing signal layer." },
   ],
   frictionless: [
     { eyebrow: "01 · Guest-mode path", title: "Two taps to the right workout.", body: "Open the app → tap Start a quick workout → tap Start Jog or Start Lift. A context recommendation chooses the easiest win, while an alternate mode remains one tap away. There is no account wall, goal form, routine picker, or permission gate before the user sees the active workout." },
@@ -108,6 +147,11 @@ const Index = () => {
   const [docTab, setDocTab] = useState<keyof typeof docSections>("prd");
   const [showReasoning, setShowReasoning] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const geoWatchRef = useRef<number | null>(null);
+  const lastPositionRef = useRef<GeolocationPosition | null>(null);
+  const [runDistanceMeters, setRunDistanceMeters] = useState(0);
+  const [gpsError, setGpsError] = useState("");
+  const [routines, setRoutines] = useState<SavedRoutine[]>(readSavedRoutines);
 
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [guestMode, setGuestMode] = useState(false);
@@ -131,6 +175,16 @@ const Index = () => {
     return () => window.clearInterval(interval);
   }, [workoutStarted, isPaused]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem(ROUTINES_STORAGE_KEY, JSON.stringify(routines));
+  }, [routines]);
+
+  useEffect(() => () => {
+    if (geoWatchRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.clearWatch(geoWatchRef.current);
+    }
+  }, []);
+
   const formatTimer = (seconds: number) => {
     const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
     const remainder = (seconds % 60).toString().padStart(2, "0");
@@ -138,6 +192,7 @@ const Index = () => {
   };
 
   const exitGuestFlow = (message = "Ready when you are") => {
+    clearLocationWatch();
     setGuestMode(false);
     setIsFirstRun(false);
     setGuestStep("welcome");
@@ -164,6 +219,9 @@ const Index = () => {
     setGuestDetailsOpen(false);
     setGuestSetSaved(false);
     setElapsed(0);
+    setRunDistanceMeters(0);
+    setGpsError("");
+    lastPositionRef.current = null;
     setIsPaused(false);
     setPermissionPrompt(mode === "run" ? "location" : null);
     setWorkoutStarted(mode === "lift");
@@ -177,7 +235,42 @@ const Index = () => {
     setAlertStatus(status === "granted" ? "Route tracking is on" : "Timer mode is ready");
   };
 
+  const requestLocationAccess = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGpsError("Location is not available here.");
+      resolveLocation("denied");
+      return;
+    }
+
+    setPermissionState((value) => ({ ...value, location: "unknown" }));
+    geoWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        setPermissionState((value) => ({ ...value, location: "granted" }));
+        setGpsError("");
+        if (lastPositionRef.current) setRunDistanceMeters((value) => value + distanceBetweenPositions(lastPositionRef.current!, position));
+        lastPositionRef.current = position;
+      },
+      () => {
+        setGpsError("Location was unavailable, so we switched to timer mode.");
+        resolveLocation("denied");
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+    setPermissionPrompt(null);
+    setWorkoutStarted(true);
+    setIsPaused(false);
+    setAlertStatus("Waiting for route updates");
+  };
+
+  const clearLocationWatch = () => {
+    if (geoWatchRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.clearWatch(geoWatchRef.current);
+      geoWatchRef.current = null;
+    }
+  };
+
   const finishGuestWorkout = () => {
+    clearLocationWatch();
     setWorkoutStarted(false);
     setIsPaused(false);
     setPermissionPrompt(null);
@@ -192,6 +285,20 @@ const Index = () => {
   const moveToSmartTiming = () => {
     setGuestStep("smart-timing");
     setAlertStatus("Nice work. One small next step.");
+  };
+
+  const saveGuestRoutine = () => {
+    const distanceMiles = runDistanceMeters > 0 ? (runDistanceMeters / 1609.344).toFixed(2) : manualDistance;
+    const routine: SavedRoutine = {
+      id: `${Date.now()}`,
+      mode: selectedMode,
+      name: selectedMode === "run" ? "Quick jog" : "First movement",
+      detail: selectedMode === "run" ? `${distanceMiles} mi · ${formatTimer(elapsed)}` : `${Math.max(guestSetCount, 1)} set · ${weightValue} kg × ${repsValue}`,
+      createdAt: new Date().toISOString(),
+    };
+    setRoutines((value) => [routine, ...value].slice(0, 12));
+    setRoutineSaved(true);
+    moveToSmartTiming();
   };
 
   const startSmartTimingSetup = () => {
@@ -262,13 +369,15 @@ const Index = () => {
 
   const renderGuestActiveWorkout = () => {
     const isRun = selectedMode === "run";
-    const status = permissionState.location === "granted" ? "Tracking route" : permissionState.location === "denied" ? "Timer mode · add distance later" : "Ready to track route";
-    return <div className={`guest-workout-page ${isRun ? "run-mode" : "lift-mode"}`}><div className="guest-workout-top"><button className="guest-close-button" aria-label="Exit workout" onClick={() => exitGuestFlow("Workout paused for later")}><X size={19} /></button><div className="guest-workout-mode"><span className="live-dot" /> {isRun ? "QUICK JOG" : "QUICK LIFT"}</div><button className="guest-menu-button" aria-label="Workout options"><MoreHorizontal size={19} /></button></div><div className="guest-workout-heading"><p className="eyebrow">{isRun ? "KEEP IT SIMPLE" : "FIRST MOVEMENT"}</p><h1>{isRun ? "Easy jog" : "First movement"}</h1><div className="guest-status-line">{isRun ? <LocateFixed size={14} /> : <Dumbbell size={14} />}<span>{isRun ? status : guestSetSaved ? "Set saved." : "Ready when you are"}</span></div></div>{isRun ? <><div className="jog-primary-metric"><span className="metric-label">DISTANCE</span><strong>0.00</strong><span className="metric-unit">MI</span></div><div className="jog-supporting-metrics"><div><span>PACE</span><strong>—</strong><small>/MI</small></div><div><span>TIME</span><strong>{formatTimer(elapsed)}</strong></div></div><div className="guest-workout-actions"><button className="secondary-workout-button" onClick={() => setIsPaused((value) => !value)}>{isPaused ? <Play size={17} fill="currentColor" /> : <Pause size={17} fill="currentColor" />} {isPaused ? "Resume" : "Pause"}</button><button className="secondary-workout-button" onClick={() => setGuestDetailsOpen((value) => !value)}><SlidersHorizontal size={17} /> {guestDetailsOpen ? "Hide details" : "More details"}</button></div>{guestDetailsOpen && <div className="guest-details-drawer"><div className="map-placeholder"><Route size={20} /><span>Route map appears here<br /><small>Location stays private to this workout</small></span></div>{permissionState.location === "denied" && <div className="manual-run-inputs"><label><span>DISTANCE <small>MI</small></span><Input inputMode="decimal" value={manualDistance} onChange={(event) => setManualDistance(event.target.value)} aria-label="Distance in miles" /></label><label><span>PACE <small>/MI</small></span><Input value={manualPace} onChange={(event) => setManualPace(event.target.value)} aria-label="Pace per mile" /></label></div>}<div className="detail-grid"><span><b>Elevation</b>0 ft</span><span><b>GPS accuracy</b>{permissionState.location === "granted" ? "High" : "Unavailable"}</span><span><b>Splits</b>Off</span><span><b>Audio cues</b>Off</span></div></div>}<Button className="finish-workout-button" onClick={finishGuestWorkout}>Finish jog <Check size={17} /></Button></> : <><div className="lift-timer"><span>SESSION TIME</span><strong>{formatTimer(elapsed)}</strong></div><div className="lift-input-row"><label><span>WEIGHT <small>KG</small></span><Input inputMode="decimal" value={weightValue} onChange={(event) => setWeightValue(event.target.value)} aria-label="Weight in kilograms" /></label><label><span>REPS</span><Input inputMode="numeric" value={repsValue} onChange={(event) => setRepsValue(event.target.value)} aria-label="Repetitions" /></label></div><div className="lift-set-feedback"><span>{guestSetCount === 0 ? "Log one set and call it a win." : `${guestSetCount} ${guestSetCount === 1 ? "set" : "sets"} logged`}</span>{guestSetSaved && <strong><CircleCheck size={15} /> Set saved.</strong>}</div><div className="guest-workout-actions"><Button className="log-set-button" onClick={() => { setGuestSetCount((value) => value + 1); setGuestSetSaved(true); }}><Save size={17} /> Log set</Button><button className="secondary-workout-button" onClick={() => setGuestDetailsOpen((value) => !value)}><SlidersHorizontal size={17} /> {guestDetailsOpen ? "Hide details" : "More details"}</button></div>{guestDetailsOpen && <div className="guest-details-drawer"><div className="detail-grid full"><span><b>Exercise picker</b>Choose later</span><span><b>Previous history</b>Hidden</span><span><b>Rest timer</b>Off</span><span><b>RPE & notes</b>Optional</span></div></div>}<Button className="finish-workout-button" onClick={finishGuestWorkout}>Finish workout <Check size={17} /></Button></>}</div>;
+    const distanceMiles = runDistanceMeters > 0 ? (runDistanceMeters / 1609.344).toFixed(2) : permissionState.location === "denied" ? manualDistance : "0.00";
+    const pace = permissionState.location === "denied" ? manualPace : formatPace(elapsed, Number(distanceMiles));
+    const status = permissionState.location === "granted" ? "Tracking route" : permissionState.location === "denied" ? gpsError || "Timer mode · add distance later" : "Ready to track route";
+    return <div className={`guest-workout-page ${isRun ? "run-mode" : "lift-mode"}`}><div className="guest-workout-top"><button className="guest-close-button" aria-label="Exit workout" onClick={() => exitGuestFlow("Workout paused for later")}><X size={19} /></button><div className="guest-workout-mode"><span className="live-dot" /> {isRun ? "QUICK JOG" : "QUICK LIFT"}</div><button className="guest-menu-button" aria-label="Workout options"><MoreHorizontal size={19} /></button></div><div className="guest-workout-heading"><p className="eyebrow">{isRun ? "KEEP IT SIMPLE" : "FIRST MOVEMENT"}</p><h1>{isRun ? "Easy jog" : "First movement"}</h1><div className="guest-status-line">{isRun ? <LocateFixed size={14} /> : <Dumbbell size={14} />}<span>{isRun ? status : guestSetSaved ? "Set saved." : "Ready when you are"}</span></div></div>{isRun ? <><div className="jog-primary-metric"><span className="metric-label">DISTANCE</span><strong>{distanceMiles}</strong><span className="metric-unit">MI</span></div><div className="jog-supporting-metrics"><div><span>PACE</span><strong>{pace}</strong><small>/MI</small></div><div><span>TIME</span><strong>{formatTimer(elapsed)}</strong></div></div><div className="guest-workout-actions"><button className="secondary-workout-button" onClick={() => setIsPaused((value) => !value)}>{isPaused ? <Play size={17} fill="currentColor" /> : <Pause size={17} fill="currentColor" />} {isPaused ? "Resume" : "Pause"}</button><button className="secondary-workout-button" onClick={() => setGuestDetailsOpen((value) => !value)}><SlidersHorizontal size={17} /> {guestDetailsOpen ? "Hide details" : "More details"}</button></div>{guestDetailsOpen && <div className="guest-details-drawer"><div className="map-placeholder"><Route size={20} /><span>Route map appears here<br /><small>Location stays private to this workout</small></span></div>{permissionState.location === "denied" && <div className="manual-run-inputs"><label><span>DISTANCE <small>MI</small></span><Input inputMode="decimal" value={manualDistance} onChange={(event) => setManualDistance(event.target.value)} aria-label="Distance in miles" /></label><label><span>PACE <small>/MI</small></span><Input value={manualPace} onChange={(event) => setManualPace(event.target.value)} aria-label="Pace per mile" /></label></div>}<div className="detail-grid"><span><b>Elevation</b>0 ft</span><span><b>GPS accuracy</b>{permissionState.location === "granted" ? "High" : "Unavailable"}</span><span><b>Splits</b>Off</span><span><b>Audio cues</b>Off</span></div></div>}<Button className="finish-workout-button" onClick={finishGuestWorkout}>Finish jog <Check size={17} /></Button></> : <><div className="lift-timer"><span>SESSION TIME</span><strong>{formatTimer(elapsed)}</strong></div><div className="lift-input-row"><label><span>WEIGHT <small>KG</small></span><Input inputMode="decimal" value={weightValue} onChange={(event) => setWeightValue(event.target.value)} aria-label="Weight in kilograms" /></label><label><span>REPS</span><Input inputMode="numeric" value={repsValue} onChange={(event) => setRepsValue(event.target.value)} aria-label="Repetitions" /></label></div><div className="lift-set-feedback"><span>{guestSetCount === 0 ? "Log one set and call it a win." : `${guestSetCount} ${guestSetCount === 1 ? "set" : "sets"} logged`}</span>{guestSetSaved && <strong><CircleCheck size={15} /> Set saved.</strong>}</div><div className="guest-workout-actions"><Button className="log-set-button" onClick={() => { setGuestSetCount((value) => value + 1); setGuestSetSaved(true); }}><Save size={17} /> Log set</Button><button className="secondary-workout-button" onClick={() => setGuestDetailsOpen((value) => !value)}><SlidersHorizontal size={17} /> {guestDetailsOpen ? "Hide details" : "More details"}</button></div>{guestDetailsOpen && <div className="guest-details-drawer"><div className="detail-grid full"><span><b>Exercise picker</b>Choose later</span><span><b>Previous history</b>Hidden</span><span><b>Rest timer</b>Off</span><span><b>RPE & notes</b>Optional</span></div></div>}<Button className="finish-workout-button" onClick={finishGuestWorkout}>Finish workout <Check size={17} /></Button></>}</div>;
   };
 
-  const renderGuestSummary = () => <div className="guest-focus-page summary-page"><div className="summary-check"><Check size={25} /></div><p className="eyebrow">SESSION COMPLETE</p><h1>You showed up.</h1><p className="guest-lead">That counts. Here’s what you logged.</p><div className="summary-metrics"><div><span>TIME</span><strong>{elapsed > 0 ? formatTimer(elapsed) : "12 min"}</strong></div><div><span>{selectedMode === "run" ? "DISTANCE" : "SETS"}</span><strong>{selectedMode === "run" ? "1.2 mi" : `${Math.max(guestSetCount, 1)}`}</strong></div></div><Button className="lime-button guest-primary-button" onClick={saveGuestWorkout}>Save my workout <Save size={15} /></Button><button className="guest-secondary-button" onClick={() => exitGuestFlow("Workout saved locally · nice work")}>Done for now</button><button className="habit-link" onClick={moveToSmartTiming}>Make this a habit <ArrowRight size={14} /></button></div>;
+  const renderGuestSummary = () => <div className="guest-focus-page summary-page"><div className="summary-check"><Check size={25} /></div><p className="eyebrow">SESSION COMPLETE</p><h1>You showed up.</h1><p className="guest-lead">That counts. Here’s what you logged.</p><div className="summary-metrics"><div><span>TIME</span><strong>{elapsed > 0 ? formatTimer(elapsed) : "12 min"}</strong></div><div><span>{selectedMode === "run" ? "DISTANCE" : "SETS"}</span><strong>{selectedMode === "run" ? `${runDistanceMeters > 0 ? (runDistanceMeters / 1609.344).toFixed(2) : manualDistance} mi` : `${Math.max(guestSetCount, 1)}`}</strong></div></div><Button className="lime-button guest-primary-button" onClick={saveGuestWorkout}>Save my workout <Save size={15} /></Button><button className="guest-secondary-button" onClick={() => exitGuestFlow("Workout saved locally · nice work")}>Done for now</button><button className="habit-link" onClick={moveToSmartTiming}>Make this a habit <ArrowRight size={14} /></button></div>;
 
-  const renderGuestSaveRoutine = () => <div className="guest-focus-page conversion-page"><div className="conversion-icon"><Save size={27} /></div><p className="eyebrow">ONE TAP FASTER NEXT TIME</p><h1>Keep this one for next time?</h1><p className="guest-lead">Save it as a simple routine so your next workout starts even faster.</p><div className="routine-preview"><div className={`routine-preview-icon ${selectedMode}`}><>{selectedMode === "run" ? <Footprints size={18} /> : <Dumbbell size={18} />}</></div><div><strong>{selectedMode === "run" ? "Quick jog" : "First movement"}</strong><span>{selectedMode === "run" ? "Easy pace · 12 min" : `${Math.max(guestSetCount, 1)} set · simple start`}</span></div><Check size={16} /></div><div className="guest-action-stack"><Button className="lime-button guest-primary-button" onClick={() => { setRoutineSaved(true); moveToSmartTiming(); }}>Save routine <ArrowRight size={15} /></Button><button className="guest-secondary-button" onClick={moveToSmartTiming}>Not now</button></div></div>;
+  const renderGuestSaveRoutine = () => <div className="guest-focus-page conversion-page"><div className="conversion-icon"><Save size={27} /></div><p className="eyebrow">ONE TAP FASTER NEXT TIME</p><h1>Keep this one for next time?</h1><p className="guest-lead">Save it as a simple routine so your next workout starts even faster.</p><div className="routine-preview"><div className={`routine-preview-icon ${selectedMode}`}><>{selectedMode === "run" ? <Footprints size={18} /> : <Dumbbell size={18} />}</></div><div><strong>{selectedMode === "run" ? "Quick jog" : "First movement"}</strong><span>{selectedMode === "run" ? "Easy pace · 12 min" : `${Math.max(guestSetCount, 1)} set · simple start`}</span></div><Check size={16} /></div><div className="guest-action-stack"><Button className="lime-button guest-primary-button" onClick={saveGuestRoutine}>Save routine <ArrowRight size={15} /></Button><button className="guest-secondary-button" onClick={moveToSmartTiming}>Not now</button></div></div>;
 
   const renderGuestSmartTiming = () => <div className="guest-focus-page conversion-page"><div className="smart-timing-art"><div><Zap size={23} fill="currentColor" /></div><span /><span /><span /></div><p className="eyebrow">THE NEXT EASY WIN</p><h1>Want help finding the next good moment?</h1><p className="guest-lead">PulseWindow can watch for a clear, open window that fits your training.</p><div className="smart-timing-benefits"><span><CalendarDays size={15} /> Open time</span><span><CloudSun size={15} /> Good weather</span><span><HeartPulse size={15} /> Your energy</span></div><div className="guest-action-stack"><Button className="lime-button guest-primary-button" onClick={startSmartTimingSetup}>Set up smart timing <ArrowRight size={15} /></Button><button className="guest-secondary-button" onClick={() => setGuestStep("account")}>Maybe later</button></div></div>;
 
@@ -276,12 +385,14 @@ const Index = () => {
 
   const renderGuestFlow = () => {
     let content = guestStep === "welcome" ? renderGuestWelcome() : guestStep === "recommendation" ? renderGuestRecommendation() : guestStep === "active" ? renderGuestActiveWorkout() : guestStep === "summary" ? renderGuestSummary() : guestStep === "save-routine" ? renderGuestSaveRoutine() : guestStep === "smart-timing" ? renderGuestSmartTiming() : guestStep === "calendar" ? renderPermissionCard("calendar") : guestStep === "notifications" ? renderPermissionCard("notifications") : renderGuestAccount();
-    return <main className="guest-shell"><div className="guest-content">{renderGuestHeader()}{content}</div>{permissionPrompt === "location" && <div className="permission-overlay"><div className="permission-card"><button className="permission-close" aria-label="Use timer instead" onClick={() => resolveLocation("denied")}><X size={17} /></button><div className="permission-icon"><LocateFixed size={24} /></div><p className="eyebrow">QUICK JOG · ONE PERMISSION</p><h2>Want your route tracked?</h2><p>Allow location to see distance, pace, and your route while you jog. You can still start a simple timer without it.</p><div className="permission-actions"><Button className="lime-button guest-primary-button" onClick={() => resolveLocation("granted")}>Turn on route tracking <ArrowRight size={15} /></Button><button className="permission-fallback-button" onClick={() => resolveLocation("denied")}>Just use a timer</button></div></div></div>}</main>;
+    return <main className="guest-shell"><div className="guest-content">{renderGuestHeader()}{content}</div>{permissionPrompt === "location" && <div className="permission-overlay"><div className="permission-card"><button className="permission-close" aria-label="Use timer instead" onClick={() => resolveLocation("denied")}><X size={17} /></button><div className="permission-icon"><LocateFixed size={24} /></div><p className="eyebrow">QUICK JOG · ONE PERMISSION</p><h2>Want your route tracked?</h2><p>Allow location to see distance, pace, and your route while you jog. You can still start a simple timer without it.</p><div className="permission-actions"><Button className="lime-button guest-primary-button" onClick={requestLocationAccess}>Turn on route tracking <ArrowRight size={15} /></Button><button className="permission-fallback-button" onClick={() => resolveLocation("denied")}>Just use a timer</button></div></div></div>}</main>;
   };
 
   const renderHome = () => <div className="page-stack animate-in"><section className="welcome-row"><div><p className="eyebrow">TUESDAY, OCTOBER 15 · 09:42 AM</p><h1>Good morning, Alex<span className="lime-dot">.</span></h1><p className="subcopy">Your body is ready. Let's find your window.</p></div><div className="streak-pill"><Flame size={15} fill="currentColor" /><span>3 day streak</span></div></section><section className="smart-card"><div className="smart-card-topline"><span className="status-tag"><span className="live-dot" /> SMART WINDOW</span><button className="more-button" onClick={() => setShowReasoning((value) => !value)} aria-label="Show recommendation details"><MoreHorizontal size={21} /></button></div><div className="smart-card-body"><div className="smart-copy"><p className="eyebrow light-eyebrow">NEXT BEST TIME TO TRAIN</p><h2>Today at <span>6:30 PM</span></h2><p className="smart-description">A low-crowd lift fits perfectly between your open calendar and peak energy window.</p><div className="score-line"><div className="score-ring"><span>92</span></div><div><strong>Excellent match</strong><p>Based on 4 signals</p></div></div></div><div className="orbit-visual" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Zap size={26} fill="currentColor" /></div><span className="orbit-dot dot-one" /><span className="orbit-dot dot-two" /><span className="orbit-dot dot-three" /></div></div><div className="smart-actions"><Button className="lime-button" onClick={() => startWorkout("lift")}><Play size={15} fill="currentColor" /> Start session</Button><button className="text-action" onClick={() => setShowReasoning((value) => !value)}>{showReasoning ? "Hide details" : "See why"}<ArrowRight size={15} /></button></div>{showReasoning && <div className="reasoning-drawer"><div><CalendarDays size={15} /> Calendar clear</div><div><CloudSun size={15} /> Weather stable</div><div><Waves size={15} /> Gym at 28%</div><div><HeartPulse size={15} /> Recovery 84</div></div>}</section><section className="section-block"><div className="section-heading"><div><p className="eyebrow">THE SIGNALS BEHIND YOUR WINDOW</p><h3>Everything is lining up.</h3></div><button className="quiet-link" onClick={() => setActiveTab("insights")}>View insights <ArrowRight size={14} /></button></div><div className="signal-grid">{signals.map((signal) => { const Icon = signal.icon; return <Card key={signal.label} className={`signal-card ${signal.tone}`}><div className="signal-icon"><Icon size={17} /></div><p>{signal.label}</p><strong>{signal.value}</strong><span>{signal.detail}</span></Card>; })}</div></section><section className="section-block"><div className="section-heading"><div><p className="eyebrow">YOUR RHYTHM</p><h3>This week at a glance.</h3></div><button className="circle-button" aria-label="Add workout" onClick={() => setActiveTab("train")}><Plus size={18} /></button></div><Card className="rhythm-card"><div className="rhythm-meta"><div><strong>3</strong><span>sessions planned</span></div><div><strong>74%</strong><span>weekly consistency</span></div><div className="rhythm-legend"><span className="legend-dot lime" /> Strength <span className="legend-dot coral" /> Run</div></div><div className="week-bars">{[{ day: "M", height: 58, type: "lime", done: true }, { day: "T", height: 34, type: "coral", done: true }, { day: "W", height: 78, type: "lime", done: false }, { day: "T", height: 46, type: "coral", done: false }, { day: "F", height: 24, type: "muted", done: false }, { day: "S", height: 68, type: "sky", done: false }, { day: "S", height: 30, type: "muted", done: false }].map((bar, index) => <div className="day-bar" key={`${bar.day}-${index}`}><div className={`bar-track ${bar.done ? "done" : ""}`}><div className={`bar-fill ${bar.type}`} style={{ height: `${bar.height}%` }} /></div><span>{bar.day}</span></div>)}</div></Card></section><section className="section-block two-column-mobile"><div className="section-heading"><div><p className="eyebrow">UP NEXT</p><h3>Keep the momentum.</h3></div><button className="quiet-link" onClick={() => setActiveTab("train")}>Open plan <ArrowRight size={14} /></button></div><div className="session-list">{sessions.map((session) => <button key={session.title} className="session-card" onClick={() => startWorkout(session.mode)}><div className={`date-block ${session.color}`}><span>{session.day}</span><strong>{session.date}</strong></div><div className="session-content"><div className="session-type"><span className={`session-dot ${session.color}`} />{session.type}</div><strong>{session.title}</strong><span>{session.detail}</span></div><ArrowRight className="session-arrow" size={18} /></button>)}</div></section></div>;
 
-  const renderTrain = () => <div className="page-stack animate-in"><section className="page-title-row"><div><p className="eyebrow">HYBRID ROUTINE TRACKER</p><h1>Train with intent<span className="lime-dot">.</span></h1><p className="subcopy">One place for every rep, mile, and win.</p></div><button className="circle-button" aria-label="Add session"><Plus size={19} /></button></section><div className="mode-switcher"><button className={selectedMode === "lift" ? "active" : ""} onClick={() => setSelectedMode("lift")}><Dumbbell size={17} /> Lift</button><button className={selectedMode === "run" ? "active run" : ""} onClick={() => setSelectedMode("run")}><Footprints size={17} /> Run</button></div>{workoutStarted ? <Card className="active-workout-card"><div className="active-head"><div><span className={`status-tag ${selectedMode === "run" ? "coral-tag" : ""}`}><span className="live-dot" /> LIVE SESSION</span><h2>{selectedMode === "lift" ? "Upper body power" : "Tempo intervals"}</h2></div><button className="icon-button" onClick={() => setWorkoutStarted(false)}><X size={18} /></button></div><div className="timer-display"><span>{formatTimer(elapsed)}</span><small>SESSION TIME</small></div>{selectedMode === "lift" ? <div className="set-list"><div className="set-list-head"><span>EXERCISE</span><span>KG × REPS</span><span>DONE</span></div>{[{ name: "Barbell bench press", value: "65 × 8" }, { name: "Single-arm row", value: "24 × 10" }, { name: "Landmine press", value: "18 × 10" }].map((set) => <div className="set-row" key={set.name}><div><strong>{set.name}</strong><span>Set 1 of 3</span></div><b>{set.value}</b><button className="set-check"><Check size={15} /></button></div>)}</div> : <div className="run-stat-grid"><div><Route size={17} /><strong>0.00</strong><span>MILES</span></div><div><Gauge size={17} /><strong>—</strong><span>AVG PACE</span></div><div><TrendingUp size={17} /><strong>0</strong><span>ELEVATION</span></div></div>}<Button className="lime-button full-button" onClick={finishRegularWorkout}><Check size={16} /> Finish session</Button></Card> : <Card className={`start-workout-card ${selectedMode === "run" ? "run-card" : ""}`}><div className="start-visual"><div className="start-icon">{selectedMode === "lift" ? <Dumbbell size={30} /> : <Footprints size={30} />}</div><span className="mini-orbit" /></div><div><p className="eyebrow">{selectedMode === "lift" ? "STRENGTH SESSION" : "OUTDOOR RUN"}</p><h2>{selectedMode === "lift" ? "Upper body power" : "Tempo intervals"}</h2><p>{selectedMode === "lift" ? "5 movements · 42 min · progressive load" : "4.2 mi target · rolling pace · riverside route"}</p></div><Button className="lime-button" onClick={() => startWorkout()}><Play size={15} fill="currentColor" /> Start now</Button></Card>}<section className="section-block"><div className="section-heading"><div><p className="eyebrow">RECENT SESSIONS</p><h3>Your work, logged.</h3></div><button className="quiet-link">See all <ArrowRight size={14} /></button></div><div className="history-list"><button className="history-row"><div className="history-icon lift"><Dumbbell size={17} /></div><div><strong>Lower body strength</strong><span>Yesterday · 48 min</span></div><b>7,840 lb</b><ChevronDown size={16} /></button><button className="history-row"><div className="history-icon run"><Footprints size={17} /></div><div><strong>Easy morning run</strong><span>Sunday · 3.8 mi</span></div><b>9:14 /mi</b><ChevronDown size={16} /></button><button className="history-row"><div className="history-icon hybrid"><Activity size={17} /></div><div><strong>Full body + 1 mi</strong><span>Friday · 56 min</span></div><b>82 load</b><ChevronDown size={16} /></button></div></section></div>;
+  const renderSavedRoutines = () => <section className="section-block saved-routines-section"><div className="section-heading"><div><p className="eyebrow">YOUR ROUTINES</p><h3>Start from something familiar.</h3></div><span className="routine-count">{routines.length} saved</span></div>{routines.length === 0 ? <Card className="empty-routines"><Save size={18} /><div><strong>Your saved routines will live here.</strong><span>Finish a quick workout and save it for your next one-tap start.</span></div></Card> : <div className="saved-routine-list">{routines.map((routine) => <button className="saved-routine-row" key={routine.id} onClick={() => startWorkout(routine.mode)}><div className={`saved-routine-icon ${routine.mode}`}>{routine.mode === "run" ? <Footprints size={17} /> : <Dumbbell size={17} />}</div><div><strong>{routine.name}</strong><span>{routine.detail}</span></div><Play size={16} /></button>)}</div>}</section>;
+
+  const renderTrain = () => <div className="page-stack animate-in"><section className="page-title-row"><div><p className="eyebrow">HYBRID ROUTINE TRACKER</p><h1>Train with intent<span className="lime-dot">.</span></h1><p className="subcopy">One place for every rep, mile, and win.</p></div><button className="circle-button" aria-label="Add session"><Plus size={19} /></button></section><div className="mode-switcher"><button className={selectedMode === "lift" ? "active" : ""} onClick={() => setSelectedMode("lift")}><Dumbbell size={17} /> Lift</button><button className={selectedMode === "run" ? "active run" : ""} onClick={() => setSelectedMode("run")}><Footprints size={17} /> Run</button></div>{workoutStarted ? <Card className="active-workout-card"><div className="active-head"><div><span className={`status-tag ${selectedMode === "run" ? "coral-tag" : ""}`}><span className="live-dot" /> LIVE SESSION</span><h2>{selectedMode === "lift" ? "Upper body power" : "Tempo intervals"}</h2></div><button className="icon-button" onClick={() => setWorkoutStarted(false)}><X size={18} /></button></div><div className="timer-display"><span>{formatTimer(elapsed)}</span><small>SESSION TIME</small></div>{selectedMode === "lift" ? <div className="set-list"><div className="set-list-head"><span>EXERCISE</span><span>KG × REPS</span><span>DONE</span></div>{[{ name: "Barbell bench press", value: "65 × 8" }, { name: "Single-arm row", value: "24 × 10" }, { name: "Landmine press", value: "18 × 10" }].map((set) => <div className="set-row" key={set.name}><div><strong>{set.name}</strong><span>Set 1 of 3</span></div><b>{set.value}</b><button className="set-check"><Check size={15} /></button></div>)}</div> : <div className="run-stat-grid"><div><Route size={17} /><strong>0.00</strong><span>MILES</span></div><div><Gauge size={17} /><strong>—</strong><span>AVG PACE</span></div><div><TrendingUp size={17} /><strong>0</strong><span>ELEVATION</span></div></div>}<Button className="lime-button full-button" onClick={finishRegularWorkout}><Check size={16} /> Finish session</Button></Card> : <Card className={`start-workout-card ${selectedMode === "run" ? "run-card" : ""}`}><div className="start-visual"><div className="start-icon">{selectedMode === "lift" ? <Dumbbell size={30} /> : <Footprints size={30} />}</div><span className="mini-orbit" /></div><div><p className="eyebrow">{selectedMode === "lift" ? "STRENGTH SESSION" : "OUTDOOR RUN"}</p><h2>{selectedMode === "lift" ? "Upper body power" : "Tempo intervals"}</h2><p>{selectedMode === "lift" ? "5 movements · 42 min · progressive load" : "4.2 mi target · rolling pace · riverside route"}</p></div><Button className="lime-button" onClick={() => startWorkout()}><Play size={15} fill="currentColor" /> Start now</Button></Card>}<section className="section-block"><div className="section-heading"><div><p className="eyebrow">RECENT SESSIONS</p><h3>Your work, logged.</h3></div><button className="quiet-link">See all <ArrowRight size={14} /></button></div><div className="history-list"><button className="history-row"><div className="history-icon lift"><Dumbbell size={17} /></div><div><strong>Lower body strength</strong><span>Yesterday · 48 min</span></div><b>7,840 lb</b><ChevronDown size={16} /></button><button className="history-row"><div className="history-icon run"><Footprints size={17} /></div><div><strong>Easy morning run</strong><span>Sunday · 3.8 mi</span></div><b>9:14 /mi</b><ChevronDown size={16} /></button><button className="history-row"><div className="history-icon hybrid"><Activity size={17} /></div><div><strong>Full body + 1 mi</strong><span>Friday · 56 min</span></div><b>82 load</b><ChevronDown size={16} /></button></div></section>{renderSavedRoutines()}</div>;
 
   const renderInsights = () => <div className="page-stack animate-in"><section className="page-title-row"><div><p className="eyebrow">SIGNALS & TRENDS</p><h1>Know your edge<span className="lime-dot">.</span></h1><p className="subcopy">Your last 30 days, without the noise.</p></div><button className="circle-button"><MoreHorizontal size={18} /></button></section><Card className="recovery-card"><div><p className="eyebrow light-eyebrow">CURRENT READINESS</p><h2>84<span>/100</span></h2><p>Above your 30-day average by <strong>+9</strong>.</p></div><div className="readiness-ring"><div><strong>84</strong><span>READY</span></div></div></Card><section className="section-block"><div className="section-heading"><div><p className="eyebrow">TRAINING LOAD</p><h3>Steady is strong.</h3></div><span className="period-pill">LAST 30 DAYS <ChevronDown size={14} /></span></div><Card className="chart-card"><div className="chart-head"><div><strong>642</strong><span>total load</span></div><div className="positive-stat"><TrendingUp size={14} /> 18% vs prior</div></div><div className="area-chart"><div className="chart-grid"><span /><span /><span /><span /></div><svg viewBox="0 0 500 150" preserveAspectRatio="none" aria-label="Training load trend"><path d="M0 126 C35 122, 42 96, 72 105 S112 118, 140 76 S182 98, 210 88 S258 104, 282 45 S322 88, 350 66 S388 78, 412 36 S457 55, 500 18" fill="none" stroke="#b8f34a" strokeWidth="4" strokeLinecap="round" /><path d="M0 126 C35 122, 42 96, 72 105 S112 118, 140 76 S182 98, 210 88 S258 104, 282 45 S322 88, 350 66 S388 78, 412 36 S457 55, 500 18 L500 150 L0 150Z" fill="#b8f34a" opacity=".08" /></svg></div><div className="chart-labels"><span>SEP 16</span><span>SEP 23</span><span>SEP 30</span><span>OCT 7</span><span>OCT 15</span></div></Card></section><section className="section-block"><div className="section-heading"><div><p className="eyebrow">PERSONALIZED NOTES</p><h3>Your coach, in context.</h3></div></div><div className="insight-list"><div className="insight-item lime-border"><div className="insight-icon"><Sparkles size={17} /></div><div><strong>Your best lift window is 5:45–7:00 PM.</strong><span>You complete 22% more volume when your last meal is 2+ hours before training.</span></div><ArrowRight size={16} /></div><div className="insight-item coral-border"><div className="insight-icon"><Wind size={17} /></div><div><strong>Thursday is your run day.</strong><span>Your pace is strongest when humidity stays under 65% and your sleep score is above 75.</span></div><ArrowRight size={16} /></div></div></section></div>;
 
