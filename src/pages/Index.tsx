@@ -187,6 +187,7 @@ const Index = () => {
   const displayInitials = displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const [activeTab, setActiveTab] = useState<NavId>("home");
   const [alertStatus, setAlertStatus] = useState("Ready when you are");
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(true);
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("lift");
   const [workoutStarted, setWorkoutStarted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -410,7 +411,7 @@ const Index = () => {
         <div><p className="brand-name">PulseWindow</p><p className="brand-context">HYBRID TRAINING OS</p></div>
       </div>
       <div className="header-actions">
-        <button className="icon-button notification-button" aria-label="Notifications" onClick={() => setAlertStatus("You're all caught up")}><Bell size={18} strokeWidth={1.8} /><span className="notification-dot" /></button>
+        <button className="icon-button notification-button" aria-label="Notifications" onClick={() => { setHasUnreadNotifications(false); setAlertStatus("You're all caught up"); }}><Bell size={18} strokeWidth={1.8} />{hasUnreadNotifications && <span className="notification-dot" />}</button>
         <UserMenu />
       </div>
     </header>
