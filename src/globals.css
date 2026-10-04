@@ -68,7 +68,8 @@
 .rail-profile small { color: #8992a8; font-size: 9px; }
 .app-main { width: 100%; min-width: 0; }
 .content-wrap { width: min(100%, 1100px); margin: 0 auto; padding: 0 20px 100px; }
-.app-header { display: flex; align-items: center; justify-content: space-between; height: 78px; position: relative; }
+.app-header { display: flex; align-items: center; justify-content: space-between; height: 78px; position: relative; z-index: 25; transition: margin-bottom .25s ease; }
+.app-header:has(.profile-menu) { margin-bottom: 188px; }
 .brand-lockup { display: flex; align-items: center; gap: 10px; }
 .brand-mark { width: 31px; height: 31px; background: #b8f34a; border-radius: 10px; position: relative; display: flex; align-items: center; justify-content: center; gap: 2px; transform: rotate(-7deg); box-shadow: 0 7px 18px rgba(91, 117, 21, .14); }
 .brand-mark span { width: 3px; background: #0d1325; border-radius: 4px; transform: skew(-18deg); }
@@ -78,6 +79,7 @@
 .brand-name { margin: 0; color: #10172a; font-size: 13px; line-height: 1; font-weight: 800; letter-spacing: -.03em; }
 .brand-context { margin: 4px 0 0; font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: .16em; color: #737b89; }
 .header-actions { display: flex; align-items: center; gap: 12px; position: relative; }
+.profile-control { position: relative; display: flex; align-items: center; }
 .icon-button, .profile-button, .more-button, .circle-button { border: 0; cursor: pointer; display: grid; place-items: center; background: transparent; color: #60697c; }
 .icon-button { width: 34px; height: 34px; border-radius: 50%; }
 .icon-button:hover, .more-button:hover, .circle-button:hover { background: #e4e7dd; color: #11182b; }
@@ -85,10 +87,12 @@
 .notification-dot { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; background: #f47f65; border-radius: 50%; box-shadow: 0 0 0 2px #f2f3ec; }
 .profile-button { padding: 0; width: 33px; height: 33px; }
 .profile-button span { width: 33px; height: 33px; font-size: 10px; }
-.profile-menu { position: absolute; z-index: 10; right: 0; top: 45px; width: 220px; background: #fff; border: 1px solid #e2e4dc; border-radius: 15px; padding: 15px; box-shadow: 0 16px 36px rgba(20, 28, 44, .13); display: grid; gap: 5px; animation: fadeUp .2s ease both; }
+.profile-menu { position: absolute; z-index: 30; right: 0; top: calc(100% + 10px); width: min(240px, calc(100vw - 32px)); max-height: min(360px, calc(100vh - 110px)); overflow-y: auto; background: #fff; border: 1px solid #e2e4dc; border-radius: 17px; padding: 15px; box-shadow: 0 18px 42px rgba(20, 28, 44, .17); display: grid; gap: 5px; animation: fadeUp .2s ease both; }
 .profile-menu strong { font-size: 13px; }
-.profile-menu span { color: #70788a; font-size: 11px; }
-.profile-menu button { margin-top: 8px; border: 0; background: #f1f3ec; border-radius: 9px; padding: 9px; color: #1e2639; display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 10px; cursor: pointer; }
+.profile-menu span { color: #70788a; font-size: 11px; overflow-wrap: anywhere; }
+.profile-menu a, .profile-menu button { margin-top: 8px; border: 0; background: #f1f3ec; border-radius: 9px; padding: 9px; color: #1e2639; display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 700 10px/1.2 Manrope, sans-serif; text-decoration: none; cursor: pointer; }
+.profile-menu a:hover, .profile-menu button:hover { background: #e7eadf; }
+.profile-menu button { width: 100%; }
 .menu-kicker, .eyebrow { margin: 0; color: #8b93a0; font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: .12em; }
 .menu-kicker { color: #8d95a6; }
 .mobile-tab-label { display: none; }
