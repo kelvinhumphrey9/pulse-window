@@ -369,3 +369,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   .insights-page > *, .insights-page .recovery-card h2, .insights-page .readiness-ring, .insights-page .chart-card, .insights-page .insight-item, .insights-page .area-chart path:first-child, .insights-menu { animation: none !important; }
 }
+
+.train-page .page-title-row { align-items: flex-start; }
+.train-add-button { flex: 0 0 auto; width: 44px; height: 44px; min-width: 44px; min-height: 44px; touch-action: manipulation; }
+.train-add-button svg { width: 19px; height: 19px; }
+.train-page .mode-switcher { width: min(100%, 280px); }
+.train-page .mode-switcher button { min-height: 44px; touch-action: manipulation; }
+.train-page .start-workout-card .lime-button { min-width: 106px; white-space: nowrap; }
+.train-page .set-check { flex: 0 0 32px; min-width: 32px; min-height: 32px; touch-action: manipulation; }
+
+@media (max-width: 699px) {
+  .train-page .page-title-row { gap: 12px; }
+  .train-page .page-title-row > div:first-child { min-width: 0; flex: 1; }
+  .train-page .page-title-row h1 { font-size: clamp(27px, 8.5vw, 38px); overflow-wrap: anywhere; }
+  .train-page .start-workout-card { grid-template-columns: auto minmax(0, 1fr); }
+  .train-page .start-workout-card .lime-button { grid-column: 1 / -1; width: 100%; justify-content: center; }
+  .train-page .history-row { grid-template-columns: 34px minmax(0, 1fr) auto 16px; gap: 8px; }
+  .train-page .history-row div:nth-child(2) { min-width: 0; }
+  .train-page .history-row strong, .train-page .history-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .train-page .history-row b { white-space: nowrap; }
+}
+
+@media (max-width: 390px) {
+  .train-add-button { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
+  .train-page .history-row b { display: none; }
+  .train-page .history-row { grid-template-columns: 34px minmax(0, 1fr) 16px; }
+}
