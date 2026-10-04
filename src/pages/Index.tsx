@@ -226,6 +226,10 @@ const Index = () => {
   }, [session]);
 
   useEffect(() => {
+    if (guestStep === "active" && selectedMode === "run") setGuestDetailsOpen(true);
+  }, [guestStep, selectedMode]);
+
+  useEffect(() => {
     if (!workoutStarted || isPaused) return;
     const interval = window.setInterval(() => setElapsed((value) => value + 1), 1000);
     return () => window.clearInterval(interval);
